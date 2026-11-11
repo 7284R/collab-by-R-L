@@ -15,9 +15,11 @@ Create a `.env` file from `.env.example` and set `VITE_SUPABASE_URL` and `VITE_S
 
 For GitHub Actions deployment, add the same two values as repository Actions secrets with those exact names. The workflow passes them to Vite at build time and fails clearly if either secret is missing. Never commit `.env` or a Supabase secret key. The publishable key is intended for browser use; protect database tables with Supabase Row Level Security.
 
-Enable email/password authentication and **Confirm email** in Supabase Authentication settings. Add `https://7284R.github.io/collab-by-R-L/` to the Supabase project's allowed redirect URLs. The app rejects unverified sessions and requires users to confirm their email address before signing in. Accounts are managed by Supabase Auth. Feed posts are still stored in the current browser and are not shared with other users.
+Enable email/password authentication and **Confirm email** in Supabase Authentication settings. Add `https://7284R.github.io/collab-by-R-L/` to the Supabase project's allowed redirect URLs. The app rejects unverified sessions and requires users to confirm their email address before signing in. Accounts are managed by Supabase Auth.
 
-The demo profile cards and seeded sample posts have been removed. On first load, previously saved sample posts are deleted; only posts associated with a signed-in account are retained. Email verification confirms access to an inbox but does not, by itself, prove that an account belongs to a particular person or prevent all automated sign-ups.
+Run `supabase/migrations/20261111193000_shared_community_feed.sql` in the Supabase SQL Editor to create the shared posts, likes, and comments tables, row-level security policies, and public photo bucket. The migration enables public feed reads, limits publishing and interactions to confirmed accounts, and lets each person delete only their own posts, likes, and comments. The feed updates in realtime across browsers.
+
+The demo profile cards and seeded sample posts have been removed. Email verification confirms access to an inbox but does not, by itself, prove that an account belongs to a particular person or prevent all automated sign-ups.
 
 ## Publish on GitHub Pages
 

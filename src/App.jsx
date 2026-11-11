@@ -1,9 +1,16 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "./utils/supabase.js";
+import {
+  deleteCommunityPost,
+  fetchCommunityPosts,
+  publishCommunityComment,
+  publishCommunityPost,
+  subscribeToCommunityFeed,
+  toggleCommunityLike,
+  unsubscribeFromCommunityFeed,
+} from "./utils/community.js";
 
-const POSTS_KEY = "rl-community-posts";
 const MAX_IMAGE_SIZE = 1.5 * 1024 * 1024;
-const DEMO_POST_IDS = new Set(["welcome-post", "creative-post", "photo-post"]);
 
 const iconPaths = {
   home: <><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9M9 20v-6h6v6" /></>,
@@ -41,15 +48,6 @@ function Icon({ name, size = 18, className = "" }) {
       {iconPaths[name]}
     </svg>
   );
-}
-
-function readStorage(key, fallback) {
-  const saved = localStorage.getItem(key);
-  return saved ? JSON.parse(saved) : fallback;
-}
-
-function saveStorage(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
 }
 
 function getInitials(name = "You") {
@@ -181,8 +179,9 @@ function AuthDialog({ mode, onClose, onModeChange, onAuth }) {
 function PostCard({ post, currentUser, onLike, onComment, onDelete, onRequireAuth }) {
   const [comment, setComment] = useState("");
   const [showComments, setShowComments] = useState(false);
-  const liked = Boolean(currentUser && post.likedBy?.includes(currentUser.email));
-  const ownPost = currentUser?.email === post.authorEmail;
+  const [commentError, setCommentError] = useState("");
+  const liked = Boolean(currentUser && post.likedBy?.includes(currentUser.id));
+  const ownPost = currentUser?.id === post.userId;
 
   function submitComment(event) {
     event.preventDefault();
@@ -191,9 +190,13 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete, onRequireAut
       return;
     }
     if (!comment.trim()) return;
-    onComment(post.id, comment.trim());
-    setComment("");
-    setShowComments(true);
+    setCommentError("");
+    onComment(post.id, comment.trim())
+      .then(() => {
+        setComment("");
+        setShowComments(true);
+      })
+      .catch((error) => setCommentError(error.message || "Your comment could not be published."));
   }
 
   return (
@@ -238,6 +241,7 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete, onRequireAut
       </div>
       {showComments && (
         <div className="comments-area">
+          {commentError && <p className="composer-error" role="alert">{commentError}</p>}
           {post.comments?.map((item) => (
             <div className="comment-row" key={item.id}>
               <Avatar initials={item.initials} color={item.color} size="small" />
@@ -265,33 +269,65 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete, onRequireAut
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [posts, setPosts] = useState(() => {
-    const savedPosts = readStorage(POSTS_KEY, []);
-    const realUserPosts = savedPosts.filter(
-      (post) => !DEMO_POST_IDS.has(post.id) && post.authorEmail,
-    );
-    if (savedPosts.length !== realUserPosts.length) {
-      saveStorage(POSTS_KEY, realUserPosts);
-    }
-    return realUserPosts;
-  });
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+  const [postsError, setPostsError] = useState("");
   const [authMode, setAuthMode] = useState("");
   const [activeNav, setActiveNav] = useState("Home");
   const [draft, setDraft] = useState("");
   const [image, setImage] = useState("");
+  const [imageFile, setImageFile] = useState(null);
   const [imageName, setImageName] = useState("");
   const [composerError, setComposerError] = useState("");
+  const [isPublishing, setIsPublishing] = useState(false);
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
   const fileInput = useRef(null);
 
-  useEffect(() => {
+  const refreshFeed = useCallback(async () => {
     try {
-      saveStorage(POSTS_KEY, posts);
-    } catch {
-      setToast("Your browser couldn't save these posts. Free up browser storage and try again.");
+      const communityPosts = await fetchCommunityPosts();
+      setPosts(communityPosts);
+      setPostsError("");
+      setPostsLoading(false);
+      return true;
+    } catch (error) {
+      setPostsError(error.message || "The community feed could not be loaded.");
+      setPostsLoading(false);
+      return false;
     }
-  }, [posts]);
+  }, []);
+
+  useEffect(() => {
+    if (!image) return undefined;
+    return () => URL.revokeObjectURL(image);
+  }, [image]);
+
+  useEffect(() => {
+    let active = true;
+    let channel;
+
+    if (!supabase) {
+      setPostsError("The community feed needs a Supabase connection.");
+      setPostsLoading(false);
+      return undefined;
+    }
+
+    channel = subscribeToCommunityFeed(
+      () => {
+        if (active) void refreshFeed();
+      },
+      (error) => {
+        if (active) setToast(`Live updates could not connect: ${error.message}`);
+      },
+    );
+    void refreshFeed();
+
+    return () => {
+      active = false;
+      void unsubscribeFromCommunityFeed(channel);
+    };
+  }, [refreshFeed]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -420,94 +456,83 @@ export default function App() {
       return;
     }
     if (file.size > MAX_IMAGE_SIZE) {
-      setComposerError("Choose an image smaller than 1.5 MB for this browser demo.");
+      setComposerError("Choose an image smaller than 1.5 MB.");
       event.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setImage(reader.result);
-        setImageName(file.name);
-      } else {
-        setComposerError("This image could not be loaded. Please try another file.");
-      }
-    };
-    reader.onerror = () => setComposerError("This image could not be loaded. Please try another file.");
-    reader.readAsDataURL(file);
+    setImage(URL.createObjectURL(file));
+    setImageFile(file);
+    setImageName(file.name);
     event.target.value = "";
   }
 
-  function createPost(event) {
+  async function createPost(event) {
     event.preventDefault();
     if (!currentUser) {
       requireAuth();
       return;
     }
-    if (!draft.trim() && !image) {
+    if (!draft.trim() && !imageFile) {
       setComposerError("Add a thought or a photo before sharing.");
       return;
     }
-    const newPost = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: currentUser.name,
-      handle: `@${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, "")}`,
-      initials: getInitials(currentUser.name),
-      color: "violet",
-      time: "Just now",
-      text: draft.trim(),
-      image,
-      likes: 0,
-      comments: [],
-      likedBy: [],
-      authorEmail: currentUser.email,
-      tag: "Your post",
-      isMember: true,
-    };
-    setPosts((existing) => [newPost, ...existing]);
-    setDraft("");
-    setImage("");
-    setImageName("");
+    setIsPublishing(true);
     setComposerError("");
-    setToast("Your post is live.");
+    try {
+      await publishCommunityPost({ user: currentUser, body: draft.trim(), file: imageFile });
+      setDraft("");
+      setImage("");
+      setImageFile(null);
+      setImageName("");
+      setToast("Your post is shared with the community.");
+      if (!await refreshFeed()) {
+        setToast("Your post was saved, but the community feed could not refresh.");
+      }
+    } catch (error) {
+      setComposerError(error.message || "Your post could not be published.");
+    } finally {
+      setIsPublishing(false);
+    }
   }
 
-  function toggleLike(postId) {
+  async function toggleLike(postId) {
     if (!currentUser) {
       requireAuth("Sign in to like a post.");
       return;
     }
-    setPosts((existing) => existing.map((post) => {
-      if (post.id !== postId) return post;
-      const likedBy = post.likedBy || [];
-      const hasLiked = likedBy.includes(currentUser.email);
-      return {
-        ...post,
-        likedBy: hasLiked
-          ? likedBy.filter((email) => email !== currentUser.email)
-          : [...likedBy, currentUser.email],
-        likes: Math.max(0, post.likes + (hasLiked ? -1 : 1)),
-      };
-    }));
+    const post = posts.find((item) => item.id === postId);
+    if (!post) return;
+    const liked = post.likedBy?.includes(currentUser.id) || false;
+    try {
+      await toggleCommunityLike({ postId, userId: currentUser.id, liked });
+      if (!await refreshFeed()) setToast("Your like was saved, but the feed could not refresh.");
+    } catch (error) {
+      setToast(`Your like could not be saved: ${error.message}`);
+    }
   }
 
-  function addComment(postId, text) {
-    if (!currentUser) return requireAuth();
-    setPosts((existing) => existing.map((post) => post.id !== postId ? post : {
-      ...post,
-      comments: [...(post.comments || []), {
-        id: `${Date.now()}`,
-        name: currentUser.name,
-        initials: getInitials(currentUser.name),
-        color: "violet",
-        text,
-      }],
-    }));
+  async function addComment(postId, text) {
+    if (!currentUser) {
+      requireAuth();
+      throw new Error("Sign in to comment.");
+    }
+    await publishCommunityComment({ postId, user: currentUser, body: text });
+    if (!await refreshFeed()) setToast("Your comment was saved, but the feed could not refresh.");
   }
 
-  function deletePost(postId) {
-    setPosts((existing) => existing.filter((post) => post.id !== postId));
-    setToast("Your post was deleted.");
+  async function deletePost(postId) {
+    const post = posts.find((item) => item.id === postId);
+    if (!post || post.userId !== currentUser?.id) return;
+    try {
+      await deleteCommunityPost(post);
+      if (!await refreshFeed()) {
+        setToast("Your post was deleted, but the community feed could not refresh.");
+        return;
+      }
+      setToast("Your post was deleted.");
+    } catch (error) {
+      setToast(`Your post could not be deleted: ${error.message}`);
+    }
   }
 
   const visiblePosts = posts.filter((post) => {
@@ -640,7 +665,7 @@ export default function App() {
                 <div className="image-preview">
                   <img src={image} alt="Selected upload preview" />
                   <span>{imageName}</span>
-                  <button className="icon-button" aria-label="Remove selected image" onClick={() => { setImage(""); setImageName(""); }}>
+                  <button className="icon-button" aria-label="Remove selected image" onClick={() => { setImage(""); setImageFile(null); setImageName(""); }}>
                     <Icon name="close" size={16} />
                   </button>
                 </div>
@@ -656,8 +681,8 @@ export default function App() {
                     <Icon name="smile" size={17} /><span>Feeling</span>
                   </button>
                 </div>
-                <button className="button button-primary share-button" onClick={createPost}>
-                  Share post <Icon name="arrow" size={15} />
+                <button className="button button-primary share-button" onClick={createPost} disabled={isPublishing}>
+                  {isPublishing ? "Sharing..." : "Share post"} {!isPublishing && <Icon name="arrow" size={15} />}
                 </button>
               </div>
             </section>
@@ -666,8 +691,18 @@ export default function App() {
               <div><h2>Your feed</h2><span className="feed-count">{visiblePosts.length}</span></div>
               <button className="sort-button" onClick={() => setToast("Showing the newest posts first.")}>For you <span>⌄</span></button>
             </div>
+            {postsError && (
+              <div className="feed-error" role="alert">
+                <p>{postsError.includes("Could not find the table") || postsError.includes("relation") || postsError.includes("schema cache")
+                  ? "The shared feed database has not been set up yet. Run the Supabase migration to get started."
+                  : postsError}</p>
+                <button className="quiet-link" onClick={() => { setPostsLoading(true); void refreshFeed(); }}>Try again</button>
+              </div>
+            )}
             <div className="posts-list">
-              {visiblePosts.length ? visiblePosts.map((post) => (
+              {postsLoading ? (
+                <div className="empty-state"><p>Loading community posts...</p></div>
+              ) : postsError ? null : visiblePosts.length ? visiblePosts.map((post) => (
                 <PostCard
                   key={post.id}
                   post={post}
