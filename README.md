@@ -15,7 +15,9 @@ Create a `.env` file from `.env.example` and set `VITE_SUPABASE_URL` and `VITE_S
 
 For GitHub Actions deployment, add the same two values as repository Actions secrets with those exact names. The workflow passes them to Vite at build time and fails clearly if either secret is missing. Never commit `.env` or a Supabase secret key. The publishable key is intended for browser use; protect database tables with Supabase Row Level Security.
 
-Enable email/password authentication in Supabase. If email confirmation is on, add `https://7284R.github.io/collab-by-R-L/` to the Supabase project's allowed redirect URLs. Accounts are managed by Supabase Auth. Feed posts are still stored in the current browser and are not yet shared with other users.
+Enable email/password authentication and **Confirm email** in Supabase Authentication settings. Add `https://7284R.github.io/collab-by-R-L/` to the Supabase project's allowed redirect URLs. The app rejects unverified sessions and requires users to confirm their email address before signing in. Accounts are managed by Supabase Auth. Feed posts are still stored in the current browser and are not shared with other users.
+
+The demo profile cards and seeded sample posts have been removed. On first load, previously saved sample posts are deleted; only posts associated with a signed-in account are retained. Email verification confirms access to an inbox but does not, by itself, prove that an account belongs to a particular person or prevent all automated sign-ups.
 
 ## Publish on GitHub Pages
 

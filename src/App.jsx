@@ -3,53 +3,7 @@ import { supabase } from "./utils/supabase.js";
 
 const POSTS_KEY = "rl-community-posts";
 const MAX_IMAGE_SIZE = 1.5 * 1024 * 1024;
-
-const starterPosts = [
-  {
-    id: "welcome-post",
-    name: "Riley Morgan",
-    handle: "@rileymorgan",
-    initials: "RM",
-    color: "coral",
-    time: "2 hours ago",
-    text: "A little reminder to make room for the things that make you feel alive. What has inspired you lately? #littlethings",
-    image:
-      "https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1200&q=85",
-    likes: 28,
-    comments: [],
-    likedBy: [],
-    tag: "Community",
-  },
-  {
-    id: "creative-post",
-    name: "Jordan Lee",
-    handle: "@jordanlee",
-    initials: "JL",
-    color: "violet",
-    time: "4 hours ago",
-    text: "Sunday mood: slow mornings, good coffee, and a fresh page. Drop one small thing you're looking forward to this week ☕ #creativeprocess",
-    image: "",
-    likes: 14,
-    comments: [],
-    likedBy: [],
-    tag: "Daily thoughts",
-  },
-  {
-    id: "photo-post",
-    name: "Avery Chen",
-    handle: "@averychen",
-    initials: "AC",
-    color: "blue",
-    time: "Yesterday",
-    text: "Chasing the last light of the day. Some views just make you stop and breathe. #weekendvibes",
-    image:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=85",
-    likes: 42,
-    comments: [],
-    likedBy: [],
-    tag: "Photography",
-  },
-];
+const DEMO_POST_IDS = new Set(["welcome-post", "creative-post", "photo-post"]);
 
 const iconPaths = {
   home: <><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9M9 20v-6h6v6" /></>,
@@ -108,7 +62,7 @@ function getInitials(name = "You") {
 }
 
 function toCommunityUser(user) {
-  if (!user) return null;
+  if (!user?.email_confirmed_at) return null;
   const email = user.email || "";
   return {
     id: user.id,
@@ -311,7 +265,16 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete, onRequireAut
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [posts, setPosts] = useState(() => readStorage(POSTS_KEY, starterPosts));
+  const [posts, setPosts] = useState(() => {
+    const savedPosts = readStorage(POSTS_KEY, []);
+    const realUserPosts = savedPosts.filter(
+      (post) => !DEMO_POST_IDS.has(post.id) && post.authorEmail,
+    );
+    if (savedPosts.length !== realUserPosts.length) {
+      saveStorage(POSTS_KEY, realUserPosts);
+    }
+    return realUserPosts;
+  });
   const [authMode, setAuthMode] = useState("");
   const [activeNav, setActiveNav] = useState("Home");
   const [draft, setDraft] = useState("");
@@ -346,7 +309,18 @@ export default function App() {
           setToast(`Unable to restore your session: ${error.message}`);
           return;
         }
-        if (active) setCurrentUser(toCommunityUser(data.session?.user));
+        if (!active) return;
+        const user = toCommunityUser(data.session?.user);
+        setCurrentUser(user);
+        if (!user && data.session) {
+          supabase.auth.signOut().then(({ error: signOutError }) => {
+            if (active && signOutError) {
+              setToast(`Unable to clear an unverified session: ${signOutError.message}`);
+            }
+          }).catch((signOutError) => {
+            if (active) setToast(`Unable to clear an unverified session: ${signOutError.message}`);
+          });
+        }
       })
       .catch((error) => {
         if (active) setToast(`Unable to restore your session: ${error.message}`);
@@ -375,13 +349,20 @@ export default function App() {
         password,
         options: {
           data: { full_name: name.trim() },
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: window.location.href,
         },
       });
       if (error) throw error;
-      if (!data.session) return { needsEmailConfirmation: true };
+      if (!data.user?.email_confirmed_at) {
+        if (data.session) {
+          const { error: signOutError } = await supabase.auth.signOut();
+          if (signOutError) throw signOutError;
+        }
+        return { needsEmailConfirmation: true };
+      }
 
-      setCurrentUser(toCommunityUser(data.user));
+      const newUser = toCommunityUser(data.user);
+      setCurrentUser(newUser);
       setAuthMode("");
       setToast(`Welcome to the community, ${name.trim().split(" ")[0]}!`);
       return {};
@@ -394,6 +375,12 @@ export default function App() {
     if (error) throw error;
 
     const user = toCommunityUser(data.user);
+    if (!user) {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+      throw new Error("Please verify your email address before signing in. Check your inbox for the confirmation link.");
+    }
+
     setCurrentUser(user);
     setAuthMode("");
     setToast(`Welcome back, ${user.name.split(" ")[0]}!`);
@@ -558,12 +545,11 @@ export default function App() {
             >
               <Icon name={icon} />
               <span>{name}</span>
-              {name === "Community" && <span className="nav-count">12</span>}
             </button>
           ))}
           <p className="nav-label nav-label-spaced">YOUR SPACE</p>
           <button className="nav-item" onClick={() => currentUser ? setToast("You're all caught up!") : setAuthMode("login")}>
-            <Icon name="bell" /><span>Notifications</span><span className="notification-dot" />
+            <Icon name="bell" /><span>Notifications</span>
           </button>
         </nav>
         <div className="sidebar-bottom">
@@ -637,39 +623,6 @@ export default function App() {
               </div>
             </section>
 
-            <section className="stories-section" aria-label="Community stories">
-              <div className="section-heading">
-                <div><h2>Community stories</h2><p>A few moments from your people</p></div>
-                <button className="quiet-link" onClick={() => setToast("You're viewing all recent stories.")}>See all <Icon name="arrow" size={14} /></button>
-              </div>
-              <div className="stories-row">
-                <button className="story-card story-add" onClick={() => currentUser ? document.getElementById("thought-box")?.focus() : setAuthMode("signup")}>
-                  <span className="story-avatar story-add-avatar"><Icon name="plus" /></span>
-                  <span className="story-name">Your story</span>
-                </button>
-                <button className="story-card" onClick={() => setToast("Riley's story · Finding the good in everyday moments.")}>
-                  <span className="story-avatar story-riley"><span>RM</span><i>✦</i></span>
-                  <span className="story-name">Riley</span>
-                </button>
-                <button className="story-card" onClick={() => setToast("Jordan's story · Making time for creative mornings.")}>
-                  <span className="story-avatar story-jordan"><span>JL</span><i>✦</i></span>
-                  <span className="story-name">Jordan</span>
-                </button>
-                <button className="story-card" onClick={() => setToast("Avery's story · Little snapshots from the weekend.")}>
-                  <span className="story-avatar story-avery"><span>AC</span><i>✦</i></span>
-                  <span className="story-name">Avery</span>
-                </button>
-                <button className="story-card" onClick={() => setToast("Sam's story · A playlist for slow afternoons.")}>
-                  <span className="story-avatar story-sam"><span>SK</span><i>✦</i></span>
-                  <span className="story-name">Sam</span>
-                </button>
-                <button className="story-card story-extra" onClick={() => setToast("More community stories are coming soon.")}>
-                  <span className="story-avatar story-extra-avatar">+8</span>
-                  <span className="story-name">More</span>
-                </button>
-              </div>
-            </section>
-
             <section className="composer-card" aria-label="Create a post">
               <div className="composer-top">
                 <Avatar initials={currentUser ? getInitials(currentUser.name) : "RL"} color={currentUser ? "violet" : "blue"} />
@@ -725,7 +678,11 @@ export default function App() {
                   onRequireAuth={requireAuth}
                 />
               )) : (
-                <div className="empty-state"><Icon name="search" size={25} /><h3>No posts found</h3><p>Try a different name or search term.</p></div>
+                <div className="empty-state">
+                  <Icon name={search.trim() ? "search" : "users"} size={25} />
+                  <h3>{search.trim() ? "No posts found" : "No community posts yet"}</h3>
+                  <p>{search.trim() ? "Try a different name or search term." : "Confirmed members can sign in and share the first post."}</p>
+                </div>
               )}
             </div>
             <footer className="feed-footer">Made for good conversations <span>✦</span> Collaboration by R/L</footer>
@@ -737,35 +694,9 @@ export default function App() {
               <p className="eyebrow">YOUR COMMUNITY</p>
               <h2>Better, together.</h2>
               <p className="side-description">The best ideas grow when they have people to share them with.</p>
-              <div className="member-stack">
-                <Avatar initials="RM" color="coral" size="tiny" />
-                <Avatar initials="JL" color="violet" size="tiny" />
-                <Avatar initials="AC" color="blue" size="tiny" />
-                <Avatar initials="SK" color="gold" size="tiny" />
-                <span>+2.4k</span>
-              </div>
               <button className="button button-outline" onClick={() => currentUser ? setToast("You're already part of this community.") : setAuthMode("signup")}>
                 {currentUser ? "You're a member" : "Join the community"} <Icon name="arrow" size={15} />
               </button>
-            </section>
-
-            <section className="side-card trending-card">
-              <div className="section-heading side-heading">
-                <div><p className="eyebrow">WHAT'S HAPPENING</p><h2>Trending topics</h2></div>
-                <Icon name="sparkle" size={19} className="trend-sparkle" />
-              </div>
-              {[
-                { tag: "#littlethings", posts: "1.2k posts", color: "trend-pink" },
-                { tag: "#creativeprocess", posts: "846 posts", color: "trend-purple" },
-                { tag: "#weekendvibes", posts: "632 posts", color: "trend-blue" },
-              ].map((item, index) => (
-                <button className="trend-item" key={item.tag} onClick={() => setSearch(item.tag.slice(1))}>
-                  <span className={`trend-number ${item.color}`}>0{index + 1}</span>
-                  <span className="trend-copy"><strong>{item.tag}</strong><small>{item.posts}</small></span>
-                  <Icon name="arrow" size={15} />
-                </button>
-              ))}
-              <button className="quiet-link trending-more" onClick={() => setToast("More trending topics are coming soon.")}>Explore all topics <Icon name="arrow" size={14} /></button>
             </section>
 
             <section className="quote-card">

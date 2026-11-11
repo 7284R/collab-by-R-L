@@ -59,8 +59,6 @@ a { color: inherit; text-decoration: none; }
 .nav-item:hover { color: #f2eff7; background: rgba(255,255,255,.035); }
 .nav-item.active { color: #dccdff; background: linear-gradient(90deg, rgba(162, 132, 239, .15), rgba(162,132,239,.035)); }
 .nav-item.active::before { content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 2px; border-radius: 3px; background: #bd9eff; }
-.nav-count { margin-left: auto; font-size: 10px; color: #8d8999; }
-.notification-dot { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: #d997be; box-shadow: 0 0 10px #d997be; }
 .sidebar-bottom { margin-top: auto; }
 .sidebar-note { position: relative; overflow: hidden; padding: 17px 15px 16px; margin-bottom: 19px; border: 1px solid rgba(183,153,243,.12); border-radius: 12px; background: linear-gradient(145deg, rgba(154,125,225,.1), rgba(234,148,177,.035)); }
 .note-icon { color: #c9a7f8; display: block; margin-bottom: 12px; }
@@ -120,25 +118,11 @@ a { color: inherit; text-decoration: none; }
 .art-star { position: absolute; z-index: 2; color: #d4b8ff; }
 .star-one { top: 15px; left: 18px; font-size: 18px; }
 .star-two { right: 8px; bottom: 38px; color: #e6a5be; font-size: 15px; }
-.stories-section { margin-top: 27px; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; }
 .section-heading h2, .feed-toolbar h2 { margin: 0; font: 700 14px var(--font-display); letter-spacing: -.2px; }
 .section-heading p { margin: 5px 0 0; color: #888792; font-size: 10px; }
 .quiet-link { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; border: 0; color: #b8a6df; background: transparent; font-size: 10px; cursor: pointer; }
 .quiet-link:hover { color: #e0d2ff; }
-.stories-row { display: flex; gap: 18px; padding: 15px 0 2px; overflow-x: auto; scrollbar-width: none; }
-.stories-row::-webkit-scrollbar { display: none; }
-.story-card { flex: 0 0 58px; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 0; border: 0; color: #a7a5af; background: transparent; cursor: pointer; }
-.story-avatar { position: relative; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; border: 1px solid #cc9fe6; border-radius: 50%; background: linear-gradient(145deg, #312642, #17131d); }
-.story-avatar > span { display: flex; width: 42px; height: 42px; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.13); border-radius: 50%; font-size: 10px; font-weight: 700; }
-.story-avatar i { position: absolute; right: -1px; bottom: -1px; width: 17px; height: 17px; display: grid; place-items: center; border: 2px solid var(--bg); border-radius: 50%; color: #17151b; background: #c5a5ed; font-size: 8px; font-style: normal; }
-.story-add-avatar { border: 1px dashed #716a7e; color: #c4a8f4; background: #15141a; }
-.story-riley > span { background: linear-gradient(145deg, #93624f, #412c3e); }
-.story-jordan > span { background: linear-gradient(145deg, #6861a4, #29243b); }
-.story-avery > span { background: linear-gradient(145deg, #477e8c, #292d50); }
-.story-sam > span { background: linear-gradient(145deg, #a46b55, #493547); }
-.story-extra-avatar { border: 1px solid #35343c; color: #adaab4; background: #15161a; font-size: 11px; }
-.story-name { font-size: 9px; }
 .composer-card, .post-card { border: 1px solid var(--line); border-radius: 13px; background: #111216; }
 .composer-card { margin-top: 23px; padding: 17px 18px 12px; }
 .composer-top { display: flex; gap: 12px; align-items: flex-start; }
@@ -207,25 +191,8 @@ a { color: inherit; text-decoration: none; }
 .community-card .eyebrow { margin: 0 0 6px; font-size: 8px; }
 .community-card h2 { margin: 0; font: 700 17px var(--font-display); letter-spacing: -.6px; }
 .side-description { margin: 8px 0 14px; color: #96949f; font-size: 10px; line-height: 1.6; }
-.member-stack { display: flex; align-items: center; margin-bottom: 15px; }
-.member-stack > span:last-child { margin-left: 7px; color: #aaa7b2; font-size: 9px; }
 .button-outline { width: 100%; min-height: 34px; border: 1px solid rgba(199,166,243,.24); color: #d2bff3; background: rgba(171,136,224,.06); font-size: 10px; }
 .button-outline:hover { border-color: rgba(199,166,243,.48); background: rgba(171,136,224,.12); }
-.trending-card { margin-top: 15px; padding: 17px 15px 13px; }
-.side-heading { align-items: center; margin-bottom: 10px; }
-.side-heading .eyebrow { margin: 0 0 6px; font-size: 8px; }
-.side-heading h2 { font-size: 13px; }
-.trend-sparkle { color: #c7a6ee; }
-.trend-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; }
-.trend-item > svg { margin-left: auto; color: #676670; transition: .2s; }
-.trend-item:hover > svg { color: #bba1eb; transform: translate(2px,-2px); }
-.trend-number { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 8px; font-size: 8px; font-weight: 700; }
-.trend-pink { color: #eaa4bc; background: rgba(229,143,175,.1); }
-.trend-purple { color: #c0a3f1; background: rgba(171,136,224,.12); }
-.trend-blue { color: #96c3d6; background: rgba(116,173,196,.1); }
-.trend-copy strong { display: block; color: #dddbe3; font-size: 10px; font-weight: 500; }
-.trend-copy small { display: block; margin-top: 4px; color: #777681; font-size: 8px; }
-.trending-more { margin-top: 12px; }
 .quote-card { margin-top: 15px; padding: 16px 17px 15px; border: 1px solid rgba(224,175,194,.1); border-radius: 12px; background: linear-gradient(140deg, rgba(203,135,162,.075), rgba(159,132,204,.05)); }
 .quote-mark { display: block; height: 22px; color: #d69bb7; font: 700 34px Georgia, serif; }
 .quote-card p { margin: 7px 0 13px; color: #d2ced8; font: 500 12px/1.6 var(--font-display); }
@@ -294,8 +261,6 @@ a { color: inherit; text-decoration: none; }
   .banner-copy h1 { font-size: 26px; }
   .banner-copy > p { font-size: 10px; }
   .banner-art { right: -4%; transform: translateY(-50%) scale(.68); }
-  .stories-section { margin-top: 23px; }
-  .stories-row { gap: 14px; }
   .composer-card { margin-top: 19px; padding: 14px 13px 10px; }
   .composer-top { gap: 9px; }
   .composer-top .avatar { width: 34px; height: 34px; }
