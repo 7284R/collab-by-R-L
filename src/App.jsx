@@ -27,6 +27,7 @@ const iconPaths = {
   more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
   close: <><path d="m18 6-12 12M6 6l12 12" /></>,
+  logout: <><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6" /></>,
   sparkle: <><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z" /><path d="m19 14 1.2 2.8L23 18l-2.8 1.2L19 22l-1.2-2.8L15 18l2.8-1.2z" /></>,
   arrow: <><path d="M7 17 17 7M7 7h10v10" /></>,
 };
@@ -282,7 +283,9 @@ export default function App() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const fileInput = useRef(null);
+  const profileMenuRef = useRef(null);
 
   const refreshFeed = useCallback(async () => {
     try {
@@ -334,6 +337,23 @@ export default function App() {
     const timer = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return undefined;
+
+    function closeProfileMenu(event) {
+      if (event.type === "keydown" && event.key !== "Escape") return;
+      if (event.type === "pointerdown" && profileMenuRef.current?.contains(event.target)) return;
+      setProfileMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeProfileMenu);
+    document.addEventListener("keydown", closeProfileMenu);
+    return () => {
+      document.removeEventListener("pointerdown", closeProfileMenu);
+      document.removeEventListener("keydown", closeProfileMenu);
+    };
+  }, [profileMenuOpen]);
 
   useEffect(() => {
     if (!supabase) return undefined;
@@ -612,10 +632,30 @@ export default function App() {
               <Icon name="bell" size={19} /><span />
             </button>
             {currentUser ? (
-              <button className="top-profile" onClick={signOut} title="Sign out">
-                <Avatar initials={getInitials(currentUser.name)} color="violet" size="small" />
-                <span>{currentUser.name.split(" ")[0]}</span>
-              </button>
+              <div className="profile-menu-wrap" ref={profileMenuRef}>
+                <button
+                  className="top-profile"
+                  type="button"
+                  aria-label={`Account menu for ${currentUser.name}`}
+                  aria-expanded={profileMenuOpen}
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                >
+                  <Avatar initials={getInitials(currentUser.name)} color="violet" size="small" />
+                  <span>{currentUser.name.split(" ")[0]}</span>
+                  <span className={`profile-chevron ${profileMenuOpen ? "is-open" : ""}`}>⌄</span>
+                </button>
+                {profileMenuOpen && (
+                  <div className="profile-dropdown">
+                    <div className="profile-dropdown-user">
+                      <strong>{currentUser.name}</strong>
+                      <span>{currentUser.email}</span>
+                    </div>
+                    <button className="profile-logout" type="button" onClick={() => { setProfileMenuOpen(false); void signOut(); }}>
+                      <Icon name="logout" size={17} /> Log out
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="top-auth">
                 <button className="text-button" onClick={() => setAuthMode("login")}>Log in</button>
