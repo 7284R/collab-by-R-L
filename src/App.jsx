@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
+import { supabase } from "./utils/supabase.js";
 
-const USERS_KEY = "rl-community-users";
-const SESSION_KEY = "rl-community-session";
 const POSTS_KEY = "rl-community-posts";
 const MAX_IMAGE_SIZE = 1.5 * 1024 * 1024;
 
@@ -108,12 +107,14 @@ function getInitials(name = "You") {
     .join("") || "Y";
 }
 
-async function hashPassword(password) {
-  const bytes = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+function toCommunityUser(user) {
+  if (!user) return null;
+  const email = user.email || "";
+  return {
+    id: user.id,
+    name: user.user_metadata?.full_name?.trim() || email.split("@")[0] || "Community member",
+    email,
+  };
 }
 
 function Avatar({ initials, color = "coral", image, size = "normal" }) {
@@ -131,14 +132,19 @@ function AuthDialog({ mode, onClose, onModeChange, onAuth }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setBusy(true);
     try {
-      await onAuth({ mode, name, email, password });
+      const result = await onAuth({ mode, name, email, password });
+      if (result?.needsEmailConfirmation) {
+        setNotice("Check your inbox to confirm your email address, then sign in.");
+      }
     } catch (authError) {
       setError(authError.message || "Something went wrong. Please try again.");
     } finally {
@@ -200,6 +206,7 @@ function AuthDialog({ mode, onClose, onModeChange, onAuth }) {
             />
           </label>
           {error && <p className="form-error" role="alert">{error}</p>}
+          {notice && <p className="auth-notice" role="status">{notice}</p>}
           <button className="button button-primary auth-submit" disabled={busy}>
             {busy ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}
             {!busy && <Icon name="arrow" size={16} />}
@@ -211,7 +218,7 @@ function AuthDialog({ mode, onClose, onModeChange, onAuth }) {
             {mode === "signup" ? "Sign in" : "Create an account"}
           </button>
         </p>
-        <p className="privacy-note">Demo mode · Your account stays in this browser.</p>
+        <p className="privacy-note">Authentication secured by Supabase.</p>
       </section>
     </div>
   );
@@ -303,7 +310,7 @@ function PostCard({ post, currentUser, onLike, onComment, onDelete, onRequireAut
 }
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(() => readStorage(SESSION_KEY, null));
+  const [currentUser, setCurrentUser] = useState(null);
   const [posts, setPosts] = useState(() => readStorage(POSTS_KEY, starterPosts));
   const [authMode, setAuthMode] = useState("");
   const [activeNav, setActiveNav] = useState("Home");
@@ -329,39 +336,84 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    let active = true;
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) {
+          setToast(`Unable to restore your session: ${error.message}`);
+          return;
+        }
+        if (active) setCurrentUser(toCommunityUser(data.session?.user));
+      })
+      .catch((error) => {
+        if (active) setToast(`Unable to restore your session: ${error.message}`);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(toCommunityUser(session?.user));
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   async function authenticate({ mode, name, email, password }) {
+    if (!supabase) {
+      throw new Error("Supabase isn't configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY, then restart the app.");
+    }
+
     const normalizedEmail = email.trim().toLowerCase();
-    const users = readStorage(USERS_KEY, []);
-    const passwordHash = await hashPassword(password);
 
     if (mode === "signup") {
-      if (password.length < 8) throw new Error("Please use at least 8 characters for your password.");
-      if (users.some((user) => user.email === normalizedEmail)) {
-        throw new Error("An account with this email already exists. Try signing in instead.");
-      }
-      const newUser = { name: name.trim(), email: normalizedEmail, passwordHash };
-      saveStorage(USERS_KEY, [...users, newUser]);
-      const session = { name: newUser.name, email: newUser.email };
-      saveStorage(SESSION_KEY, session);
-      setCurrentUser(session);
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: { full_name: name.trim() },
+          emailRedirectTo: window.location.origin,
+        },
+      });
+      if (error) throw error;
+      if (!data.session) return { needsEmailConfirmation: true };
+
+      setCurrentUser(toCommunityUser(data.user));
       setAuthMode("");
-      setToast(`Welcome to the community, ${newUser.name.split(" ")[0]}!`);
-      return;
+      setToast(`Welcome to the community, ${name.trim().split(" ")[0]}!`);
+      return {};
     }
 
-    const existingUser = users.find((user) => user.email === normalizedEmail);
-    if (!existingUser || existingUser.passwordHash !== passwordHash) {
-      throw new Error("That email and password don't match. Please try again.");
-    }
-    const session = { name: existingUser.name, email: existingUser.email };
-    saveStorage(SESSION_KEY, session);
-    setCurrentUser(session);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+    if (error) throw error;
+
+    const user = toCommunityUser(data.user);
+    setCurrentUser(user);
     setAuthMode("");
-    setToast(`Welcome back, ${existingUser.name.split(" ")[0]}!`);
+    setToast(`Welcome back, ${user.name.split(" ")[0]}!`);
   }
 
-  function signOut() {
-    localStorage.removeItem(SESSION_KEY);
+  async function signOut() {
+    if (!supabase) {
+      setCurrentUser(null);
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setToast(`Unable to sign out: ${error.message}`);
+        return;
+      }
+    } catch (error) {
+      setToast(`Unable to sign out: ${error.message}`);
+      return;
+    }
     setCurrentUser(null);
     setToast("You've signed out.");
   }

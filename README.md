@@ -1,6 +1,6 @@
 # Collaboration by R/L
 
-A dark, responsive community website built with React and Vite. Its demo feed includes posts, photo uploads, likes, comments, and sign-up and sign-in screens.
+A dark, responsive community website built with React, Vite, and Supabase Auth. Its feed includes posts, photo uploads, likes, comments, and Supabase-powered sign-up and sign-in.
 
 ## Run locally
 
@@ -9,12 +9,14 @@ A dark, responsive community website built with React and Vite. Its demo feed in
 3. Start the development server with `npm run dev`.
 4. Create a production build with `npm run build`.
 
-## Demo account and data
+## Supabase configuration
 
-Accounts and feed posts are stored in the browser's local storage. This is a front-end demo, not production authentication or a shared online database. Data saved in one browser is not available to other users. Do not enter real passwords or sensitive information.
+Create a `.env` file from `.env.example` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` for local development. Restart Vite after changing environment variables.
 
-The `.env.example` file lists the variable names for the provided Supabase project. The current demo does not connect to Supabase yet. Add local Supabase credentials to `.env` only when implementing a Supabase integration; `.env` is intentionally excluded from Git.
+For GitHub Actions deployment, add the same two values as repository Actions secrets with those exact names. The workflow passes them to Vite at build time and fails clearly if either secret is missing. Never commit `.env` or a Supabase secret key. The publishable key is intended for browser use; protect database tables with Supabase Row Level Security.
+
+Enable email/password authentication in Supabase. If email confirmation is on, add `https://7284R.github.io/collab-by-R-L/` to the Supabase project's allowed redirect URLs. Accounts are managed by Supabase Auth. Feed posts are still stored in the current browser and are not yet shared with other users.
 
 ## Publish on GitHub Pages
 
-Push this project to a GitHub repository and select **Settings → Pages → GitHub Actions**. The included workflow builds the app and deploys it to GitHub Pages whenever changes are pushed to `main`.
+Select **Settings → Pages → GitHub Actions** in the GitHub repository. The included workflow builds the app and deploys it to GitHub Pages whenever changes are pushed to `main`.
