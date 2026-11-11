@@ -5,8 +5,8 @@ import {
   fetchCommunityPosts,
   publishCommunityComment,
   publishCommunityPost,
+  setCommunityLike,
   subscribeToCommunityFeed,
-  toggleCommunityLike,
   unsubscribeFromCommunityFeed,
 } from "./utils/community.js";
 
@@ -58,6 +58,18 @@ function getInitials(name = "You") {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "Y";
+}
+
+function withPostLike(post, userId, liked) {
+  const likedBy = post.likedBy || [];
+  const wasLiked = likedBy.includes(userId);
+  if (wasLiked === liked) return post;
+
+  return {
+    ...post,
+    likedBy: liked ? [...likedBy, userId] : likedBy.filter((id) => id !== userId),
+    likes: Math.max(0, post.likes + (liked ? 1 : -1)),
+  };
 }
 
 function toCommunityUser(user) {
@@ -286,11 +298,15 @@ export default function App() {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const fileInput = useRef(null);
   const profileMenuRef = useRef(null);
+  const pendingLikeOperations = useRef(new Map());
 
   const refreshFeed = useCallback(async () => {
     try {
       const communityPosts = await fetchCommunityPosts();
-      setPosts(communityPosts);
+      setPosts(communityPosts.map((post) => {
+        const pending = pendingLikeOperations.current.get(post.id);
+        return pending ? withPostLike(post, pending.userId, pending.desiredLiked) : post;
+      }));
       setPostsError("");
       setPostsLoading(false);
       return true;
@@ -522,12 +538,41 @@ export default function App() {
     }
     const post = posts.find((item) => item.id === postId);
     if (!post) return;
-    const liked = post.likedBy?.includes(currentUser.id) || false;
-    try {
-      await toggleCommunityLike({ postId, userId: currentUser.id, liked });
-      if (!await refreshFeed()) setToast("Your like was saved, but the feed could not refresh.");
-    } catch (error) {
-      setToast(`Your like could not be saved: ${error.message}`);
+
+    const pending = pendingLikeOperations.current.get(postId);
+    const currentlyLiked = pending
+      ? pending.desiredLiked
+      : post.likedBy?.includes(currentUser.id) || false;
+    const desiredLiked = !currentlyLiked;
+    setPosts((currentPosts) => currentPosts.map((item) => (
+      item.id === postId ? withPostLike(item, currentUser.id, desiredLiked) : item
+    )));
+
+    if (pending) {
+      pending.desiredLiked = desiredLiked;
+      return;
+    }
+
+    const operation = { userId: currentUser.id, desiredLiked };
+    pendingLikeOperations.current.set(postId, operation);
+    while (true) {
+      const desired = operation.desiredLiked;
+      try {
+        await setCommunityLike({ postId, userId: operation.userId, liked: desired });
+      } catch (error) {
+        if (operation.desiredLiked !== desired) continue;
+        pendingLikeOperations.current.delete(postId);
+        setPosts((currentPosts) => currentPosts.map((item) => (
+          item.id === postId ? withPostLike(item, operation.userId, !desired) : item
+        )));
+        setToast(`Your like could not be saved: ${error.message}`);
+        return;
+      }
+
+      if (operation.desiredLiked === desired) {
+        pendingLikeOperations.current.delete(postId);
+        return;
+      }
     }
   }
 

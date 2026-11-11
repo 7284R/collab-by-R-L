@@ -115,13 +115,21 @@ export async function publishCommunityPost({ user, body, file }) {
   return data;
 }
 
-export async function toggleCommunityLike({ postId, userId, liked }) {
+export async function setCommunityLike({ postId, userId, liked }) {
   const client = requireSupabase();
-  const query = client.from("post_likes");
 
   const result = liked
-    ? await query.delete().eq("post_id", postId).eq("user_id", userId)
-    : await query.insert({ post_id: postId, user_id: userId });
+    ? await client
+      .from("post_likes")
+      .upsert(
+        { post_id: postId, user_id: userId },
+        { onConflict: "post_id,user_id", ignoreDuplicates: true },
+      )
+    : await client
+      .from("post_likes")
+      .delete()
+      .eq("post_id", postId)
+      .eq("user_id", userId);
 
   if (result.error) throw result.error;
 }
